@@ -1,5 +1,11 @@
 <?php
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(); }
+
 require 'config.php';
+require 'cloudinary.php';
 
 $spot_slug   = $_POST['spot_slug']   ?? '';
 $uploader_id = $_POST['uploader_id'] ?? 0;
@@ -25,13 +31,9 @@ $stmt = $pdo->prepare("INSERT INTO albums (spot_id, uploader_id, name, story) VA
 $stmt->execute([$spot['id'], $uploader_id, $album_name, $album_story]);
 $album_id = $pdo->lastInsertId();
 
-// Prepare upload directory
-$upload_dir = __DIR__ . "/uploads/" . str_replace('-', '_', $spot_slug) . "/";
-if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
-
-$allowed    = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'pdf'];
-$uploaded   = 0;
-$errors     = [];
+$allowed  = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'pdf'];
+$uploaded = 0;
+$errors   = [];
 
 if (!empty($_FILES['files']['name'][0])) {
     $files      = $_FILES['files'];
@@ -49,20 +51,19 @@ if (!empty($_FILES['files']['name'][0])) {
             continue;
         }
 
-        $new_name = uniqid() . '.' . $ext;
-        $dest     = $upload_dir . $new_name;
-        $path     = "uploads/" . str_replace('-', '_', $spot_slug) . "/" . $new_name;
-        $type     = in_array($ext, ['jpg','jpeg','png','gif','webp']) ? 'image' : ($ext === 'mp4' ? 'video' : 'document');
+        $type   = in_array($ext, ['jpg','jpeg','png','gif','webp']) ? 'image' : ($ext === 'mp4' ? 'video' : 'document');
+        $folder = "clickventures/" . str_replace('-', '_', $spot_slug);
+        $result = cloudinary_upload($files['tmp_name'][$i], $folder);
 
-        if (move_uploaded_file($files['tmp_name'][$i], $dest)) {
+        if (isset($result['secure_url'])) {
             $stmt = $pdo->prepare("
                 INSERT INTO media (spot_id, uploader_id, album_id, file_name, file_path, file_type, caption)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$spot['id'], $uploader_id, $album_id, $new_name, $path, $type, '']);
+            $stmt->execute([$spot['id'], $uploader_id, $album_id, $files['name'][$i], $result['secure_url'], $type, '']);
             $uploaded++;
         } else {
-            $errors[] = "Failed to save: {$files['name'][$i]}";
+            $errors[] = "Cloudinary upload failed: {$files['name'][$i]}";
         }
     }
 }

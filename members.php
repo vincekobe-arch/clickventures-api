@@ -1,11 +1,11 @@
 <?php
-header("Access-Control-Allow-Origin: http://localhost:3000");
+header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
-
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit(); }
 
 require 'config.php';
+require 'cloudinary.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
@@ -18,12 +18,14 @@ if ($method === 'POST' && $action === 'delete') {
     $stmt = $pdo->prepare("SELECT * FROM members WHERE id = ? AND uploader_id = ?");
     $stmt->execute([$member_id, $uploader_id]);
     $member = $stmt->fetch(PDO::FETCH_ASSOC);
-
     if (!$member) { echo json_encode(['success' => false, 'message' => 'Not found or unauthorized.']); exit(); }
 
     if ($member['photo_path']) {
-        $full = __DIR__ . '/' . $member['photo_path'];
-        if (file_exists($full)) unlink($full);
+        // Extract public_id from Cloudinary URL
+        $parts     = explode('/', $member['photo_path']);
+        $filename  = pathinfo(end($parts), PATHINFO_FILENAME);
+        $folder    = implode('/', array_slice($parts, -3, 2));
+        cloudinary_delete($folder . '/' . $filename);
     }
 
     $pdo->prepare("DELETE FROM members WHERE id = ?")->execute([$member_id]);
@@ -35,11 +37,11 @@ if ($method === 'POST' && $action === 'delete') {
 if ($method === 'POST' && $action === 'edit') {
     $member_id   = $_POST['member_id']   ?? 0;
     $uploader_id = $_POST['uploader_id'] ?? 0;
-    $name        = trim($_POST['name']      ?? '');
-    $position    = trim($_POST['position']  ?? '');
-    $bio         = trim($_POST['bio']       ?? '');
-    $gender      = trim($_POST['gender']    ?? '');
-    $birthday    = trim($_POST['birthday']  ?? '') ?: null;
+    $name        = trim($_POST['name']     ?? '');
+    $position    = trim($_POST['position'] ?? '');
+    $bio         = trim($_POST['bio']      ?? '');
+    $gender      = trim($_POST['gender']   ?? '');
+    $birthday    = trim($_POST['birthday'] ?? '') ?: null;
 
     if (!$name) { echo json_encode(['success' => false, 'message' => 'Name is required.']); exit(); }
 
@@ -51,21 +53,25 @@ if ($method === 'POST' && $action === 'edit') {
     $photo_path = $member['photo_path'];
 
     if (!empty($_FILES['photo']['tmp_name'])) {
-        $spot_slug  = $_POST['spot_slug'] ?? 'general';
-        $upload_dir = __DIR__ . "/uploads/members/";
-        if (!is_dir($upload_dir)) { mkdir($upload_dir, 0777, true); }
-
-        $ext      = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
-        $allowed  = ['jpg','jpeg','png','gif','webp'];
+        $ext     = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif','webp'];
         if (in_array($ext, $allowed)) {
-            if ($photo_path && file_exists(__DIR__ . '/' . $photo_path)) unlink(__DIR__ . '/' . $photo_path);
-            $new_name   = uniqid('mbr_') . '.' . $ext;
-            $photo_path = "uploads/members/" . $new_name;
-            move_uploaded_file($_FILES['photo']['tmp_name'], $upload_dir . $new_name);
+            // Delete old photo from Cloudinary
+            if ($photo_path) {
+                $parts    = explode('/', $photo_path);
+                $filename = pathinfo(end($parts), PATHINFO_FILENAME);
+                $folder   = implode('/', array_slice($parts, -3, 2));
+                cloudinary_delete($folder . '/' . $filename);
+            }
+            // Upload new photo
+            $result = cloudinary_upload($_FILES['photo']['tmp_name'], 'clickventures/members');
+            if (isset($result['secure_url'])) {
+                $photo_path = $result['secure_url'];
+            }
         }
     }
 
-    $$pdo->prepare("UPDATE members SET name=?, position=?, bio=?, gender=?, birthday=?, photo_path=? WHERE id=?")
+    $pdo->prepare("UPDATE members SET name=?, position=?, bio=?, gender=?, birthday=?, photo_path=? WHERE id=?")
         ->execute([$name, $position, $bio, $gender, $birthday, $photo_path, $member_id]);
 
     echo json_encode(['success' => true, 'photo_path' => $photo_path]);
@@ -76,11 +82,11 @@ if ($method === 'POST' && $action === 'edit') {
 if ($method === 'POST') {
     $spot_slug   = $_POST['spot_slug']   ?? '';
     $uploader_id = $_POST['uploader_id'] ?? 0;
-    $name        = trim($_POST['name']      ?? '');
-    $position    = trim($_POST['position']  ?? '');
-    $bio         = trim($_POST['bio']       ?? '');
-    $gender      = trim($_POST['gender']    ?? '');
-    $birthday    = trim($_POST['birthday']  ?? '') ?: null;
+    $name        = trim($_POST['name']     ?? '');
+    $position    = trim($_POST['position'] ?? '');
+    $bio         = trim($_POST['bio']      ?? '');
+    $gender      = trim($_POST['gender']   ?? '');
+    $birthday    = trim($_POST['birthday'] ?? '') ?: null;
 
     if (!$name) { echo json_encode(['success' => false, 'message' => 'Name is required.']); exit(); }
 
@@ -89,17 +95,15 @@ if ($method === 'POST') {
     $spot = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$spot) { echo json_encode(['success' => false, 'message' => 'Spot not found.']); exit(); }
 
-    $upload_dir = __DIR__ . "/uploads/members/";
-    if (!is_dir($upload_dir)) { mkdir($upload_dir, 0777, true); }
-
     $photo_path = null;
     if (!empty($_FILES['photo']['tmp_name'])) {
         $ext     = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg','jpeg','png','gif','webp'];
         if (in_array($ext, $allowed)) {
-            $new_name   = uniqid('mbr_') . '.' . $ext;
-            $photo_path = "uploads/members/" . $new_name;
-            move_uploaded_file($_FILES['photo']['tmp_name'], $upload_dir . $new_name);
+            $result = cloudinary_upload($_FILES['photo']['tmp_name'], 'clickventures/members');
+            if (isset($result['secure_url'])) {
+                $photo_path = $result['secure_url'];
+            }
         }
     }
 
