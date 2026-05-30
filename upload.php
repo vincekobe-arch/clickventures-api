@@ -31,9 +31,20 @@ $stmt = $pdo->prepare("INSERT INTO albums (spot_id, uploader_id, name, story) VA
 $stmt->execute([$spot['id'], $uploader_id, $album_name, $album_story]);
 $album_id = $pdo->lastInsertId();
 
-$allowed  = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'pdf'];
+$allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'pdf', 'heic', 'heif'];
+$mime_to_ext = [
+    'image/jpeg'      => 'jpg',
+    'image/png'       => 'png',
+    'image/gif'       => 'gif',
+    'image/webp'      => 'webp',
+    'image/heic'      => 'heic',
+    'image/heif'      => 'heif',
+    'video/mp4'       => 'mp4',
+    'application/pdf' => 'pdf',
+];
 $uploaded = 0;
 $errors   = [];
+$captions = $_POST['captions'] ?? [];
 
 if (!empty($_FILES['files']['name'][0])) {
     $files      = $_FILES['files'];
@@ -46,21 +57,30 @@ if (!empty($_FILES['files']['name'][0])) {
         }
 
         $ext = strtolower(pathinfo($files['name'][$i], PATHINFO_EXTENSION));
+
+        // iOS fallback: detect ext from mime type if missing or unrecognized
+        if (!$ext || !in_array($ext, $allowed)) {
+            $mime = mime_content_type($files['tmp_name'][$i]);
+            $ext  = $mime_to_ext[$mime] ?? $ext;
+        }
+
         if (!in_array($ext, $allowed)) {
             $errors[] = "File type not allowed: {$files['name'][$i]}";
             continue;
         }
 
-        $type   = in_array($ext, ['jpg','jpeg','png','gif','webp']) ? 'image' : ($ext === 'mp4' ? 'video' : 'document');
-        $folder = "clickventures/" . str_replace('-', '_', $spot_slug);
-        $result = cloudinary_upload($files['tmp_name'][$i], $folder);
+        $type          = in_array($ext, ['jpg','jpeg','png','gif','webp','heic','heif']) ? 'image' : ($ext === 'mp4' ? 'video' : 'document');
+        $resource_type = ($ext === 'mp4') ? 'video' : 'image';
+        $folder        = "clickventures/" . str_replace('-', '_', $spot_slug);
+        $result        = cloudinary_upload($files['tmp_name'][$i], $folder, $resource_type);
 
         if (isset($result['secure_url'])) {
+            $caption = $captions[$i] ?? '';
             $stmt = $pdo->prepare("
                 INSERT INTO media (spot_id, uploader_id, album_id, file_name, file_path, file_type, caption)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$spot['id'], $uploader_id, $album_id, $files['name'][$i], $result['secure_url'], $type, '']);
+            $stmt->execute([$spot['id'], $uploader_id, $album_id, $files['name'][$i], $result['secure_url'], $type, $caption]);
             $uploaded++;
         } else {
             $errors[] = "Cloudinary upload failed: {$files['name'][$i]}";

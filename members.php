@@ -54,7 +54,15 @@ if ($method === 'POST' && $action === 'edit') {
 
     if (!empty($_FILES['photo']['tmp_name'])) {
         $ext     = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg','jpeg','png','gif','webp'];
+        $allowed = ['jpg','jpeg','png','gif','webp','heic','heif'];
+        $mime_to_ext = [
+            'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif',
+            'image/webp' => 'webp', 'image/heic' => 'heic', 'image/heif' => 'heif',
+        ];
+        if (!$ext || !in_array($ext, $allowed)) {
+            $mime = mime_content_type($_FILES['photo']['tmp_name']);
+            $ext  = $mime_to_ext[$mime] ?? $ext;
+        }
         if (in_array($ext, $allowed)) {
             // Delete old photo from Cloudinary
             if ($photo_path) {
@@ -98,7 +106,15 @@ if ($method === 'POST') {
     $photo_path = null;
     if (!empty($_FILES['photo']['tmp_name'])) {
         $ext     = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg','jpeg','png','gif','webp'];
+        $allowed = ['jpg','jpeg','png','gif','webp','heic','heif'];
+        $mime_to_ext = [
+            'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif',
+            'image/webp' => 'webp', 'image/heic' => 'heic', 'image/heif' => 'heif',
+        ];
+        if (!$ext || !in_array($ext, $allowed)) {
+            $mime = mime_content_type($_FILES['photo']['tmp_name']);
+            $ext  = $mime_to_ext[$mime] ?? $ext;
+        }
         if (in_array($ext, $allowed)) {
             $result = cloudinary_upload($_FILES['photo']['tmp_name'], 'clickventures/members');
             if (isset($result['secure_url'])) {
