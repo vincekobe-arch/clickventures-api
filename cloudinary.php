@@ -13,7 +13,8 @@ function cloudinary_upload($tmp_path, $folder = 'clickventures', $resource_type 
         'timestamp' => $timestamp,
     ];
     ksort($sign_params);
-    $sign_string = http_build_query($sign_params) . CLOUDINARY_API_SECRET;
+    // Use urldecode to prevent http_build_query from encoding slashes in folder path
+    $sign_string = urldecode(http_build_query($sign_params)) . CLOUDINARY_API_SECRET;
     $signature   = sha1($sign_string);
 
     // Give HEIC/HEIF files a proper mime type so CURLFile sends them correctly
