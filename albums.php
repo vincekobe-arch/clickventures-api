@@ -21,6 +21,7 @@ if ($method === 'POST' && $action === 'delete') {
     $stmt = $pdo->prepare("SELECT a.id FROM albums a WHERE a.id = ? AND a.uploader_id = ?");
     $stmt->execute([$album_id, $uploader_id]);
     if (!$stmt->fetch()) {
+        
         echo json_encode(['success' => false, 'message' => 'Album not found or unauthorized.']);
         exit();
     }
@@ -122,17 +123,20 @@ $mime_to_ext = [
                 $stmt->execute([$spot['id'], $uploader_id, $album_id, $files['name'][$i], $result['secure_url'], $type, $caption]);
                 $uploaded++;
             } else {
-                $errors[] = "Cloudinary upload failed: {$files['name'][$i]}";
+                $cloudinary_error = $result['error']['message'] ?? $result['error'] ?? json_encode($result);
+                $errors[] = "Cloudinary failed for {$files['name'][$i]}: {$cloudinary_error}";
             }
         }
     }
 
     echo json_encode([
-        'success'  => true,
+        'success'  => $uploaded > 0,
         'album_id' => $album_id,
         'uploaded' => $uploaded,
         'errors'   => $errors,
-        'message'  => "Album \"{$album_name}\" created with {$uploaded} file(s).",
+        'message'  => $uploaded > 0 
+            ? "Album \"{$album_name}\" created with {$uploaded} file(s)."
+            : "Album created but no files uploaded. Errors: " . implode(', ', $errors),
     ]);
     exit();
 }

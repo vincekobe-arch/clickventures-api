@@ -47,10 +47,15 @@ function cloudinary_upload($tmp_path, $folder = 'clickventures', $resource_type 
     curl_close($ch);
 
     if ($curl_err) {
+        error_log("Cloudinary curl error: " . $curl_err);
         return ['error' => $curl_err];
     }
 
-    return json_decode($response, true);
+    $decoded = json_decode($response, true);
+    if (!isset($decoded['secure_url'])) {
+        error_log("Cloudinary failed response: " . $response);
+    }
+    return $decoded;
 }
 
 function cloudinary_delete($public_id) {
