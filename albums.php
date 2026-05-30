@@ -1,4 +1,7 @@
 <?php
+set_time_limit(300);
+ini_set('max_execution_time', 300);
+ini_set('max_input_time', 300);
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
